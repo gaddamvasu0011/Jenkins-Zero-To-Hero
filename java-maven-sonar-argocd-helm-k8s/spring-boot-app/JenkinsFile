@@ -19,7 +19,7 @@ pipeline {
 
     environment {
         APP_NAME = "spring-boot-app"
-        DOCKER_REPO = "abhishekf5/ultimate-cicd"
+        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
         SONAR_URL = "http://13.60.247.157:9000"
         MAVEN_OPTS = "-Dmaven.repo.local=.m2/repository"
     }
