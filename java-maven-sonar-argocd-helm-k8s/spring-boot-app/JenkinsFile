@@ -1,68 +1,151 @@
 pipeline {
-  agent {
-    docker {
-      image 'abhishekf5/maven-abhishek-docker-agent:v1'
-      args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
-    }
-  }
-  stages {
-    stage('Checkout') {
-      steps {
-        sh 'echo passed'
-        //git branch: 'main', url: 'https://github.com/gaddamvasu0011/Jenkins-Zero-To-Hero.git'
-      }
-    }
-    stage('Build and Test') {
-      steps {
-        sh 'ls -ltr'
-        // build the project and create a JAR file
-        sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
-      }
-    }
-    stage('Static Code Analysis') {
-      environment {
-        SONAR_URL = "http://13.60.247.157:9000"
-      }
-      steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=${SONAR_URL}'
+    agent {
+        docker {
+            image 'abhishekf5/maven-abhishek-docker-agent:v1'
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
         }
-      }
     }
-    stage('Build and Push Docker Image') {
-      environment {
-        DOCKER_IMAGE = "abhishekf5/ultimate-cicd:${BUILD_NUMBER}"
-        // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
-        REGISTRY_CREDENTIALS = credentials('docker-cred')
-      }
-      steps {
-        script {
-            sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-            def dockerImage = docker.image("${DOCKER_IMAGE}")
-            docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
-                dockerImage.push()
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        retry(1)
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'qa'], description: 'Target environment')
+    }
+
+    environment {
+        APP_NAME = "spring-boot-app"
+        DOCKER_REPO = "abhishekf5/ultimate-cicd"
+        SONAR_URL = "http://13.60.247.157:9000"
+        MAVEN_OPTS = "-Dmaven.repo.local=.m2/repository"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                }
             }
         }
-      }
-    }
-    stage('Update Deployment File') {
-        environment {
-            GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-            GIT_USER_NAME = "iam-veeramalla"
-        }
-        steps {
-            withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+
+        stage('Build & Unit Test') {
+            steps {
                 sh '''
-                    git config user.email "abhishek.xyz@gmail.com"
-                    git config user.name "Abhishek Veeramalla"
-                    BUILD_NUMBER=${BUILD_NUMBER}
-                    sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                    git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                    git commit -m "Update deployment image to version ${BUILD_NUMBER}"
-                    git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                  cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                  mvn clean verify
                 '''
             }
         }
+
+        stage('Static Code Analysis - SonarQube') {
+            steps {
+                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                      cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                      mvn sonar:sonar \
+                      -Dsonar.login=$SONAR_TOKEN \
+                      -Dsonar.host.url=${SONAR_URL}
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            environment {
+                IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+            }
+            steps {
+                sh '''
+                  cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                  docker build -t ${DOCKER_REPO}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Image Security Scan (Trivy)') {
+            steps {
+                sh '''
+                  trivy image --exit-code 0 --severity LOW,MEDIUM ${DOCKER_REPO}:${IMAGE_TAG}
+                  trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+    steps {
+        script {
+
+            awsAccountId = "123456789012"
+            awsRegion    = "ap-south-1"
+            ecrRepo      = "spring-boot-app"
+
+            ecrRegistry = "${awsAccountId}.dkr.ecr.${awsRegion}.amazonaws.com"
+
+            docker.withRegistry(
+                "https://${ecrRegistry}",
+                "aws-ecr-credentials"
+            ) {
+                docker.image("${ecrRegistry}/${ecrRepo}:${IMAGE_TAG}").push()
+            }
+        }
     }
-  }
+}
+
+        stage('Update GitOps Manifests') {
+            when {
+                expression { params.ENVIRONMENT == 'dev' }
+            }
+            steps {
+                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                    sh '''
+                      git config user.name "CI Bot"
+                      git config user.email "ci@company.com"
+
+                     sed -i "s|image:.*|image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${IMAGE_TAG}|g" \
+                     java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+
+                      git add .
+                      git commit -m "Deploy ${APP_NAME} ${IMAGE_TAG} to ${ENVIRONMENT}"
+                      git push https://${GITHUB_TOKEN}@github.com/iam-veeramalla/Jenkins-Zero-To-Hero.git HEAD:main
+                    '''
+                }
+            }
+        }
+
+        stage('Manual Approval for QA') {
+            when {
+                expression { params.ENVIRONMENT == 'qa' }
+            }
+            steps {
+                input message: "Approve deployment to QA?", ok: "Deploy"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Pipeline successful - Image deployed via GitOps"
+        }
+        failure {
+            echo "❌ Pipeline failed - Investigate logs"
+        }
+        always {
+            cleanWs()
+        }
+    }
 }
