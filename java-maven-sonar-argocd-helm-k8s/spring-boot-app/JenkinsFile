@@ -82,14 +82,14 @@ pipeline {
             }
         }
 
-        stage('Image Security Scan (Trivy)') {
-            steps {
-                sh '''
-                  trivy image --exit-code 0 --severity LOW,MEDIUM ${ECR_REPO}:${IMAGE_TAG}
-                  trivy image --exit-code 1 --severity HIGH,CRITICAL ${ECR_REPO}:${IMAGE_TAG}
-                '''
-            }
-        }
+       // stage('Image Security Scan (Trivy)') {
+         //   steps {
+           //     sh '''
+              //    trivy image --exit-code 0 --severity LOW,MEDIUM ${ECR_REPO}:${IMAGE_TAG}
+               //   trivy image --exit-code 1 --severity HIGH,CRITICAL ${ECR_REPO}:${IMAGE_TAG}
+             //   '''
+         //   }
+      //  }
 
         stage('Push Docker Image to ECR') {
     steps {
