@@ -19,8 +19,8 @@ pipeline {
     }
 
     environment {
-        awsAccountId = "149536483305"
-        awsRegion    = "ap-south-1"
+        AWS_ACCOUNT_ID = "149536483305"
+        AWS_REGION    = "ap-south-1"
         ecrRepo      = "spring-boot-app"
         APP_NAME = "spring-boot-app"
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
@@ -36,6 +36,7 @@ pipeline {
                  sh 'git config --global --add safe.directory "$WORKSPACE"'
                 script {
                     GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
                 }
             }
         }
@@ -72,9 +73,7 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            environment {
-                IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
-            }
+    
             steps {
                 sh '''
                   cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
