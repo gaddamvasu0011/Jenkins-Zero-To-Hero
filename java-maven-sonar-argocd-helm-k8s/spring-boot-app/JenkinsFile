@@ -95,7 +95,7 @@ pipeline {
     steps {
         script {
 
-            ecrRegistry = "${awsAccountId}.dkr.ecr.${awsRegion}.amazonaws.com"
+            ecrRegistry = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
             docker.withRegistry(
                 "https://${ecrRegistry}",
