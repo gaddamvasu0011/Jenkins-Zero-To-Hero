@@ -48,10 +48,12 @@ pipeline {
 
         stage('Static Code Analysis - SonarQube') {
             steps {
-                withSonarQubeEnv('sonarqube-server') {
+                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_TOKEN')]) {
                     sh '''
                       cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                      mvn clean verify sonar:sonar \
+                      mvn sonar:sonar \
+                      -Dsonar.login=$SONAR_TOKEN \
+                      -Dsonar.host.url=${SONAR_URL}
                     '''
                 }
             }
