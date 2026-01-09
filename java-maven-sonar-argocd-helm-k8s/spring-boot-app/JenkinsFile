@@ -11,6 +11,7 @@ pipeline {
         retry(1)
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        skipDefaultCheckout(true)
     }
 
     parameters {
