@@ -19,6 +19,9 @@ pipeline {
     }
 
     environment {
+        awsAccountId = "149536483305"
+        awsRegion    = "ap-south-1"
+        ecrRepo      = "spring-boot-app"
         APP_NAME = "spring-boot-app"
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
         SONAR_URL = "http://65.2.128.84:9000"
@@ -92,10 +95,6 @@ pipeline {
         stage('Push Docker Image to ECR') {
     steps {
         script {
-
-            awsAccountId = "149536483305"
-            awsRegion    = "ap-south-1"
-            ecrRepo      = "spring-boot-app"
 
             ecrRegistry = "${awsAccountId}.dkr.ecr.${awsRegion}.amazonaws.com"
 
