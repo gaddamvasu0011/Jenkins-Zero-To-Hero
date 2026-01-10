@@ -125,7 +125,7 @@ stage('Push Docker Image to ECR') {
 
                       git add .
                       git commit -m "Deploy ${APP_NAME} ${IMAGE_TAG} to ${ENVIRONMENT}"
-                      git push https://${GITHUB_TOKEN}@github.com/iam-veeramalla/Jenkins-Zero-To-Hero.git HEAD:main
+                      git push https://${GITHUB_TOKEN}@github.com/gaddamvasu0011/Jenkins-Zero-To-Hero.git HEAD:main
                     '''
                 }
             }
