@@ -91,21 +91,24 @@ pipeline {
          //   }
       //  }
 
-        stage('Push Docker Image to ECR') {
+stage('Push Docker Image to ECR') {
     steps {
-        script {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             credentialsId: 'aws-ecr-credentials']
+        ]) {
+            sh '''
+              aws --version
 
-            ecrRegistry = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+              aws ecr get-login-password --region ${AWS_REGION} \
+              | docker login --username AWS --password-stdin \
+                ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-            docker.withRegistry(
-                "https://${ecrRegistry}",
-                "aws-ecr-credentials"
-            ) {
-                docker.image("${ecrRegistry}/${ecrRepo}:${IMAGE_TAG}").push()
+              docker push ${ECR_REPO}:${IMAGE_TAG}
+            '''
             }
         }
     }
-}
 
         stage('Update GitOps Manifests') {
             when {
